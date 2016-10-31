@@ -1,5 +1,5 @@
-CFLAGS += -Wall
-LDFLAGS = -ljack
+CFLAGS += -Wall -g
+LDFLAGS = -ljack -lpthread -g
 
 all: useq
 
