@@ -8,6 +8,9 @@ useq: useq.c
 run: useq
 	./useq
 
+gdb: useq
+	gdb --args ./useq
+
 clean:
 	rm -f *.o
 	
