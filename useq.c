@@ -18,8 +18,6 @@ typedef struct useq_rtfunction
     struct useq_rtfunction *next;
 } useq_rtf_t;
 
-#define NTRACKS 2
-
 typedef struct useq_state
 {
     const char *client_name;
@@ -29,15 +27,16 @@ typedef struct useq_state
     sem_t rtf_sem;
     int32_t timer, timer_end;
     useq_time_master_t *master;
-    useq_track_t *tracks[NTRACKS];
-    uint32_t track_pos[NTRACKS];
+    int n_tracks;
+    useq_track_t **tracks;
+    uint32_t *track_pos;
 } useq_state_t;
 
 static inline const useq_event_item_t *useq_get_next_event(useq_state_t *state, void **pptr)
 {
     useq_tickpos_t earliest_time = USEQ_TICKPOS_END;
     int earliest_track = -1;
-    for (int i = 0; i < NTRACKS; ++i) {
+    for (int i = 0; i < state->n_tracks; ++i) {
         useq_track_t *t = state->tracks[i];
         if (!t)
             continue;
@@ -64,7 +63,7 @@ static inline void useq_get_next_event_finalize(void **pptr)
 static void useq_timer_restart(useq_state_t *state)
 {
     state->timer = 0;
-    for (int i = 0; i < NTRACKS; ++i)
+    for (int i = 0; i < state->n_tracks; ++i)
         state->track_pos[i] = 0;
 }
 
@@ -172,6 +171,9 @@ useq_state_t *useq_create(const char *client_name)
     sem_init(&state->rtf_sem, 0, 0);
 
     state->midi_output = jack_port_register(state->jack_client, "midi", JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0);
+    state->n_tracks = 2;
+    state->tracks = calloc(sizeof(state->tracks[0]), state->n_tracks);
+    state->track_pos = calloc(sizeof(state->track_pos[0]), state->n_tracks);
     state->tracks[0] = &sample_drum_track;
     state->tracks[1] = &sample_bass_track;
     state->track_pos[0] = 0;
@@ -228,6 +230,9 @@ void useq_test(useq_state_t *state)
 
 void useq_destroy(useq_state_t *state)
 {
+    free(state->tracks);
+    free(state->track_pos);
+    free(state->master);
     assert(state->jack_client);
     jack_client_close(state->jack_client);
     state->jack_client = NULL;
