@@ -3,7 +3,9 @@ LDFLAGS = -ljack -lpthread -g
 
 all: useq
 
-useq: useq.c
+useq: useq.o
+
+useq.o: useq.c useq.h
 
 run: useq
 	./useq
@@ -13,4 +15,3 @@ gdb: useq
 
 clean:
 	rm -f *.o
-	

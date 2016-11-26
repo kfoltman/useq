@@ -1,8 +1,6 @@
-#include <assert.h>
 #include <errno.h>
 #include <semaphore.h>
 #include <stdbool.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,7 +8,7 @@
 #include <jack/jack.h>
 #include <jack/midiport.h>
 
-typedef uint64_t useq_tickpos_t;
+#include "useq.h"
 
 struct useq_state;
 
@@ -27,7 +25,10 @@ typedef struct useq_state
     jack_port_t *midi_output;
     useq_rtf_t *rtf;
     sem_t rtf_sem;
-    int32_t timer;
+    int32_t timer, timer_end;
+    useq_time_master_t *master;
+    useq_track_t *track;
+    uint32_t track_pos;
 } useq_state_t;
 
 int useq_process_callback(jack_nframes_t nframes, void *arg)
@@ -47,21 +48,69 @@ int useq_process_callback(jack_nframes_t nframes, void *arg)
     void *buf = jack_port_get_buffer(state->midi_output, nframes);
     jack_midi_clear_buffer(buf);
 
-    if (state->timer < nframes) {
-        uint8_t *p = jack_midi_event_reserve(buf, state->timer, 3);
-        if (p) {
-            p[0] = 0x90;
-            p[1] = 36;
-            p[2] = 100;
+    uint32_t displ = 0;
+    do {
+        while(true) {
+            if(state->track_pos >= state->track->n_items)
+                break;
+        
+            const useq_event_item_t *ev = &state->track->items[state->track_pos];
+            uint64_t pos_smp = ev->pos_ppqn * state->master->samples_per_tick;
+            int32_t time = pos_smp - state->timer;
+            // Correct for past overflow
+            if (time >= nframes)
+                break;
+            if (time < 0)
+                time = 0;
+            
+            uint8_t *p = jack_midi_event_reserve(buf, displ + time, ev->len);
+            if (!p)
+                break;
+            memcpy(p, ev->event, ev->len);
+            ++state->track_pos;
         }
-    }
 
-    state->timer -= nframes;
-    if (state->timer <= 0)
-        state->timer += 44100;
+        state->timer += nframes;
+        if (state->timer < state->timer_end) {
+            break;
+        } else {
+            displ += state->timer - state->timer_end;
+            state->timer = 0;
+            state->track_pos = 0;
+        }
+    } while(true);
 
     return 0;
 }
+
+static useq_event_item_t sample_track_data[] = {
+    {0x00, 2, {0xC0, 38, 100}, 0},
+    {0x00, 3, {0x90, 28, 100}, 0},
+    {0x00, 3, {0x99, 36, 100}, 0},
+    {0x00, 3, {0x99, 42, 100}, 0},
+    {0x0A, 3, {0x80, 28, 100}, 0},
+    {0x0A, 3, {0x99, 42, 100}, 0},
+    {0x10, 3, {0x99, 38, 100}, 0},
+    {0x10, 3, {0x99, 42, 100}, 0},
+    {0x15, 3, {0x99, 42, 50}, 0},
+    {0x1A, 3, {0x99, 42, 100}, 0},
+    {0x20, 3, {0x99, 36, 100}, 0},
+    {0x20, 3, {0x99, 42, 100}, 0},
+    {0x25, 3, {0x99, 44, 100}, 0},
+    {0x2A, 3, {0x99, 42, 100}, 0},
+    {0x2A, 3, {0x90, 28, 100}, 0},
+    {0x30, 3, {0x99, 38, 100}, 0},
+    {0x30, 3, {0x99, 42, 100}, 0},
+    {0x3A, 3, {0x80, 28, 100}, 0},
+    {0x3A, 3, {0x99, 46, 100}, 0},
+};
+
+static useq_track_t sample_track = {
+    .items = sample_track_data,
+    .n_items = sizeof(sample_track_data) / sizeof(sample_track_data[0]),
+};
+
+#define PPQN 16
 
 useq_state_t *useq_create(const char *client_name)
 {
@@ -79,6 +128,13 @@ useq_state_t *useq_create(const char *client_name)
     sem_init(&state->rtf_sem, 0, 0);
 
     state->midi_output = jack_port_register(state->jack_client, "midi", JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0);
+    state->track = &sample_track;
+    state->track_pos = 0;
+    state->timer = 0;
+    state->master = calloc(sizeof(useq_time_master_t), 1);
+    float tempo = 140.0;
+    state->master->samples_per_tick = jack_get_sample_rate(state->jack_client) * 60.0 / (PPQN * tempo);
+    state->timer_end = state->master->samples_per_tick * PPQN * 4;
 
     return state;
 }
