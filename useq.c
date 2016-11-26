@@ -1,36 +1,11 @@
 #include <errno.h>
-#include <semaphore.h>
+#include <smf.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include <jack/jack.h>
-#include <jack/midiport.h>
-
 #include "useq.h"
-
-struct useq_state;
-
-typedef struct useq_rtfunction
-{
-    void (*callback)(struct useq_state *state);
-    struct useq_rtfunction *next;
-} useq_rtf_t;
-
-typedef struct useq_state
-{
-    const char *client_name;
-    jack_client_t *jack_client;
-    jack_port_t *midi_output;
-    useq_rtf_t *rtf;
-    sem_t rtf_sem;
-    int32_t timer, timer_end;
-    useq_time_master_t *master;
-    int n_tracks;
-    useq_track_t **tracks;
-    uint32_t *track_pos;
-} useq_state_t;
 
 static inline const useq_event_item_t *useq_get_next_event(useq_state_t *state, void **pptr)
 {
@@ -118,43 +93,6 @@ int useq_process_callback(jack_nframes_t nframes, void *arg)
     return 0;
 }
 
-static useq_event_item_t sample_bass_track_data[] = {
-    {0x00, 2, {0xC0, 38, 100}, 0},
-    {0x00, 3, {0x90, 28, 100}, 0},
-    {0x0A, 3, {0x80, 28, 100}, 0},
-    {0x2A, 3, {0x90, 28, 100}, 0},
-    {0x3A, 3, {0x80, 28, 100}, 0},
-};
-
-static useq_event_item_t sample_drum_track_data[] = {
-    {0x00, 3, {0x99, 36, 100}, 0},
-    {0x00, 3, {0x99, 42, 100}, 0},
-    {0x0A, 3, {0x99, 42, 100}, 0},
-    {0x10, 3, {0x99, 38, 100}, 0},
-    {0x10, 3, {0x99, 42, 100}, 0},
-    {0x15, 3, {0x99, 42, 50}, 0},
-    {0x1A, 3, {0x99, 42, 100}, 0},
-    {0x20, 3, {0x99, 36, 100}, 0},
-    {0x20, 3, {0x99, 42, 100}, 0},
-    {0x25, 3, {0x99, 44, 100}, 0},
-    {0x2A, 3, {0x99, 42, 100}, 0},
-    {0x30, 3, {0x99, 38, 100}, 0},
-    {0x30, 3, {0x99, 42, 100}, 0},
-    {0x3A, 3, {0x99, 46, 100}, 0},
-};
-
-static useq_track_t sample_drum_track = {
-    .items = sample_drum_track_data,
-    .n_items = sizeof(sample_drum_track_data) / sizeof(sample_drum_track_data[0]),
-};
-
-static useq_track_t sample_bass_track = {
-    .items = sample_bass_track_data,
-    .n_items = sizeof(sample_bass_track_data) / sizeof(sample_bass_track_data[0]),
-};
-
-#define PPQN 16
-
 useq_state_t *useq_create(const char *client_name)
 {
     useq_state_t *state = calloc(sizeof(useq_state_t), 1);
@@ -171,20 +109,72 @@ useq_state_t *useq_create(const char *client_name)
     sem_init(&state->rtf_sem, 0, 0);
 
     state->midi_output = jack_port_register(state->jack_client, "midi", JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0);
-    state->n_tracks = 2;
-    state->tracks = calloc(sizeof(state->tracks[0]), state->n_tracks);
-    state->track_pos = calloc(sizeof(state->track_pos[0]), state->n_tracks);
-    state->tracks[0] = &sample_drum_track;
-    state->tracks[1] = &sample_bass_track;
-    state->track_pos[0] = 0;
-    state->track_pos[1] = 0;
-    state->timer = 0;
     state->master = calloc(sizeof(useq_time_master_t), 1);
+    useq_timer_restart(state);
     float tempo = 140.0;
     state->master->samples_per_tick = jack_get_sample_rate(state->jack_client) * 60.0 / (PPQN * tempo);
     state->timer_end = state->master->samples_per_tick * PPQN * 4;
 
     return state;
+}
+
+void useq_load_smf(useq_state_t *state, const char *filename)
+{
+    smf_t *song = smf_load(filename);
+    assert(song);
+    
+    state->n_tracks = song->number_of_tracks;
+    state->tracks = calloc(sizeof(state->tracks[0]), state->n_tracks);
+    state->track_pos = calloc(sizeof(state->track_pos[0]), state->n_tracks);
+    
+    useq_tickpos_t endpos = 0;
+    for (int i = 0; i < state->n_tracks; ++i) {
+        smf_track_t *trk = smf_get_track_by_number(song, 1 + i);
+        int evc = 0;
+        for (int j = 0; ; ++j) {
+            smf_event_t *ev = smf_track_get_event_by_number(trk, 1 + j);
+            if (smf_event_is_eot(ev)) {
+                if (ev->time_pulses > endpos)
+                    endpos = ev->time_pulses;
+                break;
+            }
+            if (!smf_event_is_metadata(ev) && ev->midi_buffer_length <= 3)
+                ++evc;
+#if 0
+            char *decoded = smf_event_decode(ev);
+            printf("decoded = %s %s\n", decoded, smf_event_is_metadata(ev) ? "(metadata)" : "");
+            free(decoded);
+#endif
+        }
+        state->tracks[i] = calloc(sizeof(useq_track_t), 1);
+        state->tracks[i]->n_items = evc;
+        state->tracks[i]->items = calloc(sizeof(useq_event_item_t), evc);
+        useq_event_item_t *items = state->tracks[i]->items;
+        evc = 0;
+        for (int j = 0; ; ++j) {
+            smf_event_t *ev = smf_track_get_event_by_number(trk, 1 + j);
+            if (smf_event_is_eot(ev))
+                break;
+            if (!smf_event_is_metadata(ev) && ev->midi_buffer_length <= 3) {
+                items[evc].pos_ppqn = ev->time_pulses;
+                memcpy(items[evc].event, ev->midi_buffer, ev->midi_buffer_length);
+                items[evc].len = ev->midi_buffer_length;
+                ++evc;
+            }
+        }
+    }
+    state->timer_end = state->master->samples_per_tick * endpos;
+
+    struct smf_tempo_struct *ts = smf_get_tempo_by_number(song, 0);
+    float tempo = 60 * 1e6 /ts->microseconds_per_quarter_note;
+    
+    state->master->samples_per_tick = jack_get_sample_rate(state->jack_client) * 60.0 / (tempo * song->ppqn);
+}
+
+void useq_destroy_song(useq_state_t *state)
+{
+    free(state->tracks);
+    free(state->track_pos);
 }
 
 void useq_activate(useq_state_t *state)
@@ -210,28 +200,9 @@ void useq_do(useq_state_t *state, useq_rtf_t *rtf)
     }
 }
 
-int test_value = 0;
-
-#define USEQ_RTF(name_, callback_) \
-    useq_rtf_t name_ = { .callback = callback_, .next = NULL }
-
-void useq_test_callback(useq_state_t *state)
-{
-    ++test_value;
-}
-
-void useq_test(useq_state_t *state)
-{
-    USEQ_RTF(testrtf, useq_test_callback);
-    useq_do(state, &testrtf);
-    useq_do(state, &testrtf);
-    assert(test_value == 2);
-}
-
 void useq_destroy(useq_state_t *state)
 {
-    free(state->tracks);
-    free(state->track_pos);
+    useq_destroy_song(state);
     free(state->master);
     assert(state->jack_client);
     jack_client_close(state->jack_client);
@@ -242,13 +213,19 @@ void useq_destroy(useq_state_t *state)
 
 int main(int argc, char *argv[])
 {
+    if (argc != 3) {
+        printf("Usage: %s <midifile> <jackport>\n", argv[0]);
+        return 1;
+    }
     useq_state_t *state = useq_create("useq");
     if (!state)
     {
         fprintf(stderr, "Unable to create a JACK client\n");
         return 1;
     }
+    useq_load_smf(state, argv[1]);
     useq_activate(state);
+    jack_connect(state->jack_client, "useq:midi", argv[2]);
 
     useq_test(state);
     printf("Press ENTER to quit.\n");
