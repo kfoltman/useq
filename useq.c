@@ -18,6 +18,8 @@ typedef struct useq_rtfunction
     struct useq_rtfunction *next;
 } useq_rtf_t;
 
+#define NTRACKS 2
+
 typedef struct useq_state
 {
     const char *client_name;
@@ -27,9 +29,44 @@ typedef struct useq_state
     sem_t rtf_sem;
     int32_t timer, timer_end;
     useq_time_master_t *master;
-    useq_track_t *track;
-    uint32_t track_pos;
+    useq_track_t *tracks[NTRACKS];
+    uint32_t track_pos[NTRACKS];
 } useq_state_t;
+
+static inline const useq_event_item_t *useq_get_next_event(useq_state_t *state, void **pptr)
+{
+    useq_tickpos_t earliest_time = USEQ_TICKPOS_END;
+    int earliest_track = -1;
+    for (int i = 0; i < NTRACKS; ++i) {
+        useq_track_t *t = state->tracks[i];
+        if (!t)
+            continue;
+        unsigned tp = state->track_pos[i];
+        if (tp < t->n_items && t->items[tp].pos_ppqn < earliest_time) {
+            earliest_time = t->items[tp].pos_ppqn;
+            earliest_track = i;
+        }
+    }
+    if(earliest_track == -1)
+        return NULL;
+
+    useq_track_t *track = state->tracks[earliest_track];
+    uint32_t *tpos = &state->track_pos[earliest_track];
+    *pptr = tpos;
+    return &track->items[*tpos];
+}
+
+static inline void useq_get_next_event_finalize(void **pptr)
+{
+    ++*(uint32_t *)pptr;
+}
+
+static void useq_timer_restart(useq_state_t *state)
+{
+    state->timer = 0;
+    for (int i = 0; i < NTRACKS; ++i)
+        state->track_pos[i] = 0;
+}
 
 int useq_process_callback(jack_nframes_t nframes, void *arg)
 {
@@ -51,10 +88,10 @@ int useq_process_callback(jack_nframes_t nframes, void *arg)
     uint32_t displ = 0;
     do {
         while(true) {
-            if(state->track_pos >= state->track->n_items)
+            void *tmp;
+            const useq_event_item_t *ev = useq_get_next_event(state, &tmp);
+            if (!ev)
                 break;
-        
-            const useq_event_item_t *ev = &state->track->items[state->track_pos];
             uint64_t pos_smp = ev->pos_ppqn * state->master->samples_per_tick;
             int32_t time = pos_smp - state->timer;
             // Correct for past overflow
@@ -67,7 +104,7 @@ int useq_process_callback(jack_nframes_t nframes, void *arg)
             if (!p)
                 break;
             memcpy(p, ev->event, ev->len);
-            ++state->track_pos;
+            useq_get_next_event_finalize(tmp);
         }
 
         state->timer += nframes;
@@ -75,20 +112,24 @@ int useq_process_callback(jack_nframes_t nframes, void *arg)
             break;
         } else {
             displ += state->timer - state->timer_end;
-            state->timer = 0;
-            state->track_pos = 0;
+            useq_timer_restart(state);
         }
     } while(true);
 
     return 0;
 }
 
-static useq_event_item_t sample_track_data[] = {
+static useq_event_item_t sample_bass_track_data[] = {
     {0x00, 2, {0xC0, 38, 100}, 0},
     {0x00, 3, {0x90, 28, 100}, 0},
+    {0x0A, 3, {0x80, 28, 100}, 0},
+    {0x2A, 3, {0x90, 28, 100}, 0},
+    {0x3A, 3, {0x80, 28, 100}, 0},
+};
+
+static useq_event_item_t sample_drum_track_data[] = {
     {0x00, 3, {0x99, 36, 100}, 0},
     {0x00, 3, {0x99, 42, 100}, 0},
-    {0x0A, 3, {0x80, 28, 100}, 0},
     {0x0A, 3, {0x99, 42, 100}, 0},
     {0x10, 3, {0x99, 38, 100}, 0},
     {0x10, 3, {0x99, 42, 100}, 0},
@@ -98,16 +139,19 @@ static useq_event_item_t sample_track_data[] = {
     {0x20, 3, {0x99, 42, 100}, 0},
     {0x25, 3, {0x99, 44, 100}, 0},
     {0x2A, 3, {0x99, 42, 100}, 0},
-    {0x2A, 3, {0x90, 28, 100}, 0},
     {0x30, 3, {0x99, 38, 100}, 0},
     {0x30, 3, {0x99, 42, 100}, 0},
-    {0x3A, 3, {0x80, 28, 100}, 0},
     {0x3A, 3, {0x99, 46, 100}, 0},
 };
 
-static useq_track_t sample_track = {
-    .items = sample_track_data,
-    .n_items = sizeof(sample_track_data) / sizeof(sample_track_data[0]),
+static useq_track_t sample_drum_track = {
+    .items = sample_drum_track_data,
+    .n_items = sizeof(sample_drum_track_data) / sizeof(sample_drum_track_data[0]),
+};
+
+static useq_track_t sample_bass_track = {
+    .items = sample_bass_track_data,
+    .n_items = sizeof(sample_bass_track_data) / sizeof(sample_bass_track_data[0]),
 };
 
 #define PPQN 16
@@ -128,8 +172,10 @@ useq_state_t *useq_create(const char *client_name)
     sem_init(&state->rtf_sem, 0, 0);
 
     state->midi_output = jack_port_register(state->jack_client, "midi", JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput, 0);
-    state->track = &sample_track;
-    state->track_pos = 0;
+    state->tracks[0] = &sample_drum_track;
+    state->tracks[1] = &sample_bass_track;
+    state->track_pos[0] = 0;
+    state->track_pos[1] = 0;
     state->timer = 0;
     state->master = calloc(sizeof(useq_time_master_t), 1);
     float tempo = 140.0;

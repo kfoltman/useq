@@ -1,6 +1,8 @@
 #include <assert.h>
 #include <stdint.h>
 
+#define USEQ_TICKPOS_END (-1ULL)
+
 typedef uint64_t useq_samplepos_t;
 typedef uint64_t useq_sampledelta_t;
 typedef uint64_t useq_tickpos_t;
