@@ -75,7 +75,9 @@ int useq_load_smf(useq_state_t *state, const char *filename)
 
     struct smf_tempo_struct *ts = smf_get_tempo_by_number(song, 0);
     state->master->tempo = 60 * 1e6 /ts->microseconds_per_quarter_note;
-    
+
+    smf_delete(song);
+
     return 0;
 }
 
