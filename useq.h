@@ -71,9 +71,10 @@ extern int useq_jack_create(useq_state_t *state, const char *client_name);
 extern void useq_jack_activate(useq_state_t *state);
 extern void useq_jack_deactivate(useq_state_t *state);
 extern void useq_jack_destroy(useq_state_t *state);
+extern jack_client_t *useq_jack_get_client(useq_state_t *state);
 
 // Song management
-extern void useq_load_smf(useq_state_t *state, const char *filename);
+extern int useq_load_smf(useq_state_t *state, const char *filename);
 extern void useq_destroy_song(useq_state_t *state);
 
 // Playback management

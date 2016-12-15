@@ -118,6 +118,11 @@ void useq_jack_activate(useq_state_t *state)
     jack_activate(state->jack_client);
 }
 
+jack_client_t *useq_jack_get_client(useq_state_t *state)
+{
+    return state->jack_client;
+}
+
 void useq_jack_deactivate(useq_state_t *state)
 {
     jack_deactivate(state->jack_client);

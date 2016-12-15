@@ -22,12 +22,13 @@ useq_state_t *useq_create()
     return state;
 }
 
-void useq_load_smf(useq_state_t *state, const char *filename)
+int useq_load_smf(useq_state_t *state, const char *filename)
 {
     useq_destroy_song(state);
     
     smf_t *song = smf_load(filename);
-    assert(song);
+    if (!song)
+        return -1;
     
     state->n_tracks = song->number_of_tracks;
     state->tracks = calloc(sizeof(state->tracks[0]), state->n_tracks);
@@ -75,6 +76,7 @@ void useq_load_smf(useq_state_t *state, const char *filename)
     struct smf_tempo_struct *ts = smf_get_tempo_by_number(song, 0);
     state->master->tempo = 60 * 1e6 /ts->microseconds_per_quarter_note;
     
+    return 0;
 }
 
 void useq_destroy_song(useq_state_t *state)
@@ -95,26 +97,3 @@ void useq_destroy(useq_state_t *state)
     free(state);
 }
 
-int useq_play_midi(const char *midi_file, const char *port)
-{
-    useq_state_t *state = useq_create();
-
-    if (useq_jack_create(state, "useq") < 0)
-    {
-        fprintf(stderr, "Unable to create a JACK client\n");
-        return 1;
-    }
-    useq_load_smf(state, midi_file);
-    useq_jack_activate(state);
-    jack_connect(state->jack_client, "useq:midi", port);
-
-    useq_test(state);
-    printf("Press ENTER to quit.\n");
-    while(getchar() != 10)
-        ;
-
-    useq_jack_deactivate(state);
-    useq_jack_destroy(state);
-    useq_destroy(state);
-    return 0;
-}
