@@ -211,21 +211,17 @@ void useq_destroy(useq_state_t *state)
     free(state);
 }
 
-int main(int argc, char *argv[])
+int useq_play_midi(const char *midi_file, const char *port)
 {
-    if (argc != 3) {
-        printf("Usage: %s <midifile> <jackport>\n", argv[0]);
-        return 1;
-    }
     useq_state_t *state = useq_create("useq");
     if (!state)
     {
         fprintf(stderr, "Unable to create a JACK client\n");
         return 1;
     }
-    useq_load_smf(state, argv[1]);
+    useq_load_smf(state, midi_file);
     useq_activate(state);
-    jack_connect(state->jack_client, "useq:midi", argv[2]);
+    jack_connect(state->jack_client, "useq:midi", port);
 
     useq_test(state);
     printf("Press ENTER to quit.\n");

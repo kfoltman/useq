@@ -5,6 +5,8 @@
 #include <jack/jack.h>
 #include <jack/midiport.h>
 
+#define USEQ_EXPORT __attribute__((visibility("default")))
+
 #define PPQN 16
 
 #define USEQ_TICKPOS_END (-1ULL)
