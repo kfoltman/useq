@@ -3,12 +3,14 @@ LDFLAGS = -ljack -lpthread -g -lsmf -rdynamic
 
 all: useq.so
 
-useq.so: useq.o useq-test.o
+useq.so: useq.o useq-test.o useq-jack.o
 	gcc -fPIC -shared -Wl,-soname=$@ -o $@ $^ $(LDFLAGS)
 
 useq.o: useq.c useq.h Makefile
 
 useq-test.o: useq-test.c useq.h
+
+useq-jack.o: useq-jack.c useq.h
 
 run: useq.so
 	./useq skylark.mid fluidsynth:midi

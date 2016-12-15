@@ -42,7 +42,7 @@ void useq_set_test_song(useq_state_t *state)
     state->track_pos = calloc(sizeof(state->track_pos[0]), state->n_tracks);
     state->tracks[0] = &sample_drum_track;
     state->tracks[1] = &sample_bass_track;
-    state->timer_end = state->master->samples_per_tick * PPQN * 4;
+    state->timer_end_ticks = state->master->ppqn * 4;
 }
 
 static int test_value = 0;

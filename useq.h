@@ -17,11 +17,13 @@ typedef uint64_t useq_tickpos_t;
 typedef uint64_t useq_tickdelta_t;
 
 typedef struct useq_time_master {
+    float tempo;
+    unsigned ppqn;
     float samples_per_tick;
 } useq_time_master_t;
 
 typedef struct useq_event_item {
-    useq_tickpos_t pos_ppqn;
+    useq_tickpos_t pos_ticks;
     uint8_t len;
     uint8_t event[3];
     uint32_t extra;
@@ -47,7 +49,8 @@ typedef struct useq_state
     jack_port_t *midi_output;
     useq_rtf_t *rtf;
     sem_t rtf_sem;
-    int32_t timer, timer_end;
+    useq_samplepos_t timer, timer_end_samples;
+    useq_tickpos_t timer_end_ticks;
     useq_time_master_t *master;
     int n_tracks;
     useq_track_t **tracks;
@@ -58,6 +61,23 @@ typedef struct useq_state
     useq_rtf_t name_ = { .callback = callback_, .next = NULL }
 
 extern void useq_do(useq_state_t *state, useq_rtf_t *rtf);
+
+// Object creation/destruction
+extern useq_state_t *useq_create();
+extern void useq_destroy(useq_state_t *state);
+
+// JACK state management
+extern int useq_jack_create(useq_state_t *state, const char *client_name);
+extern void useq_jack_activate(useq_state_t *state);
+extern void useq_jack_deactivate(useq_state_t *state);
+extern void useq_jack_destroy(useq_state_t *state);
+
+// Song management
+extern void useq_load_smf(useq_state_t *state, const char *filename);
+extern void useq_destroy_song(useq_state_t *state);
+
+// Playback management
+extern void useq_timer_restart(useq_state_t *state);
 
 // Temp dev testing functions - to be removed or expanded into real tests
 
