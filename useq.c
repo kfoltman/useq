@@ -12,7 +12,8 @@ useq_state_t *useq_create()
     useq_state_t *state = calloc(sizeof(useq_state_t), 1);
     state->jack_client = NULL;
     state->client_name = NULL;
-    state->midi_output = NULL;
+    state->n_outputs = 0;
+    state->outputs = NULL;
     sem_init(&state->rtf_sem, 0, 0);
 
     state->master = calloc(sizeof(useq_time_master_t), 1);
@@ -25,17 +26,16 @@ useq_state_t *useq_create()
 int useq_load_smf(useq_state_t *state, const char *filename)
 {
     useq_destroy_song(state);
-    
+
     smf_t *song = smf_load(filename);
     if (!song)
         return -1;
-    
-    state->n_tracks = song->number_of_tracks;
-    state->tracks = calloc(sizeof(state->tracks[0]), state->n_tracks);
-    state->track_pos = calloc(sizeof(state->track_pos[0]), state->n_tracks);
+
+    int n_tracks = song->number_of_tracks;
+    useq_track_t **tracks = calloc(sizeof(tracks[0]), n_tracks);
     
     useq_tickpos_t endpos = 0;
-    for (int i = 0; i < state->n_tracks; ++i) {
+    for (int i = 0; i < n_tracks; ++i) {
         smf_track_t *trk = smf_get_track_by_number(song, 1 + i);
         int evc = 0;
         for (int j = 0; ; ++j) {
@@ -53,10 +53,8 @@ int useq_load_smf(useq_state_t *state, const char *filename)
             free(decoded);
 #endif
         }
-        state->tracks[i] = calloc(sizeof(useq_track_t), 1);
-        state->tracks[i]->n_items = evc;
-        state->tracks[i]->items = calloc(sizeof(useq_event_item_t), evc);
-        useq_event_item_t *items = state->tracks[i]->items;
+        tracks[i] = useq_track_new(evc);
+        useq_event_item_t *items = tracks[i]->items;
         evc = 0;
         for (int j = 0; ; ++j) {
             smf_event_t *ev = smf_track_get_event_by_number(trk, 1 + j);
@@ -70,6 +68,13 @@ int useq_load_smf(useq_state_t *state, const char *filename)
             }
         }
     }
+    useq_output_t *output = useq_output_new(state, "midi");
+    useq_output_set_tracks(output, n_tracks, tracks);
+
+    int n_outputs = 1;
+    useq_output_t **outputs = calloc(sizeof(state->outputs[0]), n_outputs);
+    outputs[0] = output;
+    useq_state_set_outputs(state, n_outputs, outputs);
     state->timer_end_ticks = endpos;
     state->master->ppqn = song->ppqn;
 
@@ -83,10 +88,13 @@ int useq_load_smf(useq_state_t *state, const char *filename)
 
 void useq_destroy_song(useq_state_t *state)
 {
-    free(state->tracks);
-    state->tracks = NULL;
-    free(state->track_pos);
-    state->track_pos = NULL;
+    for (int o = 0; o < state->n_outputs; ++o) {
+        useq_output_t *output = state->outputs[o];
+        useq_output_destroy(output);
+    }
+    free(state->outputs);
+    state->n_outputs = 0;
+    state->outputs = NULL;
 }
 
 void useq_destroy(useq_state_t *state)

@@ -37,24 +37,29 @@ static useq_track_t sample_bass_track = {
 
 void useq_set_test_song(useq_state_t *state)
 {
-    state->n_tracks = 2;
-    state->tracks = calloc(sizeof(state->tracks[0]), state->n_tracks);
-    state->track_pos = calloc(sizeof(state->track_pos[0]), state->n_tracks);
-    state->tracks[0] = &sample_drum_track;
-    state->tracks[1] = &sample_bass_track;
+    state->n_outputs = 1;
+    state->outputs = calloc(sizeof(state->outputs[0]), state->n_outputs);
+
+    useq_output_t *output = useq_output_new(state, "output");
+    output->n_tracks = 2;
+    output->tracks = calloc(sizeof(output->tracks[0]), output->n_tracks);
+    output->tracks[0] = &sample_drum_track;
+    output->tracks[1] = &sample_bass_track;
+
+    state->outputs[0] = output;
     state->timer_end_ticks = state->master->ppqn * 4;
 }
 
 static int test_value = 0;
 
-void useq_test_callback(useq_state_t *state)
+void useq_test_callback(useq_state_t *state, void *ignore __attribute__((unused)))
 {
     ++test_value;
 }
 
 void useq_test(useq_state_t *state)
 {
-    USEQ_RTF(testrtf, useq_test_callback);
+    USEQ_RTF(testrtf, useq_test_callback, NULL);
     useq_do(state, &testrtf);
     useq_do(state, &testrtf);
     assert(test_value == 2);

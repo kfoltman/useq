@@ -13,7 +13,7 @@ if useq_load_smf(state, sys.argv[1]) < 0:
     print "Cannot load MIDI file."
     sys.exit(2)
 useq_jack_activate(state)
-jack_connect(useq_jack_get_client(state), "useq:midi", sys.argv[2])
+jack_connect(useq_jack_get_client(state), "%s:midi" % (useq_jack_get_client_name(state), ), sys.argv[2])
 useq_test(state)
 print "Press ENTER to quit."
 raw_input()
