@@ -1,5 +1,29 @@
 import ctypes
 
+class EventEncoding:
+    @staticmethod
+    def note_off(channel, note, vel):
+        return 0x8003 + (channel - 1) * 256 + (note << 16) + (vel << 24)
+    @staticmethod
+    def note_on(channel, note, vel):
+        return 0x9003 + (channel - 1) * 256 + (note << 16) + (vel << 24)
+    @staticmethod
+    def polyphonic_aftertouch(channel, note, vel):
+        return 0xa003 + (channel - 1) * 256 + (note << 16) + (vel << 24)
+    @staticmethod
+    def cc(channel, note, vel):
+        return 0xb003 + (channel - 1) * 256 + (note << 16) + (vel << 24)
+    @staticmethod
+    def program_change(channel, program):
+        return 0xc002 + (channel - 1) * 256 + (program << 16)
+    @staticmethod
+    def channel_aftertouch(channel, pressure):
+        return 0xd002 + (channel - 1) * 256 + (pressure << 16)
+    @staticmethod
+    def pitch_wheel(channel, pitch):
+        # note: pitch = 0..16383 (centre is 8192)
+        return 0xe003 + (channel - 1) * 256 + ((pitch & 127) << 16) + ((pitch // 128) << 24)
+
 class EncodeAsAscii(object):
     @classmethod
     def from_param(klass, value):
