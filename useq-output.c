@@ -34,6 +34,30 @@ void useq_output_set_tracks(useq_output_t *output, int n_tracks, useq_track_t **
     useq_do(output->state, &update_tracks);
 }
 
+struct cmd_replace_track {
+    useq_track_t **ptr;
+    useq_track_t *new_track;
+};
+
+static void cmd_replace_track_exec(useq_state_t *state, void *arg) {
+    struct cmd_replace_track *u = arg;
+    *u->ptr = u->new_track;
+}
+
+int useq_output_replace_track(useq_output_t *output, useq_track_t *old_track, useq_track_t *new_track)
+{
+    int count = 0;
+    for (uint32_t i = 0; i < output->n_tracks; ++i) {
+        if (output->tracks[i] == old_track) {
+            ++count;
+            struct cmd_replace_track arg = { &output->tracks[i], new_track };
+            USEQ_RTF(replace_track, cmd_replace_track_exec, &arg);
+            useq_do(output->state, &replace_track);
+        }
+    }
+    return count;
+}
+
 void useq_output_destroy(useq_output_t *output)
 {
     for (int i = 0; i < output->n_tracks; ++i) {
