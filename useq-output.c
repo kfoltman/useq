@@ -29,9 +29,22 @@ static void cmd_update_tracks_exec(useq_state_t *state, void *arg) {
 
 void useq_output_set_tracks(useq_output_t *output, int n_tracks, useq_track_t **tracks)
 {
+    useq_track_t **old_tracks = output->tracks;
     struct cmd_update_tracks arg = { output, n_tracks, tracks };
     USEQ_RTF(update_tracks, cmd_update_tracks_exec, &arg);
     useq_do(output->state, &update_tracks);
+    free(old_tracks);
+}
+
+bool useq_output_add_track(useq_output_t *output, useq_track_t *track)
+{
+    useq_track_t **tracks = calloc(sizeof(tracks[0]), output->n_tracks + 1);
+    if (!tracks)
+        return false;
+    memcpy(tracks, output->tracks, sizeof(tracks[0]) * output->n_tracks);
+    tracks[output->n_tracks] = track;
+    useq_output_set_tracks(output, output->n_tracks + 1, tracks);
+    return true;
 }
 
 struct cmd_replace_track {

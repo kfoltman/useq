@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <semaphore.h>
+#include <stdbool.h>
 #include <stdint.h>
 
 #include <jack/jack.h>
@@ -90,6 +91,7 @@ extern void useq_track_destroy(useq_track_t *track);
 
 // Output management
 extern useq_output_t *useq_output_new(useq_state_t *state, const char *name);
+extern bool useq_output_add_track(useq_output_t *output, useq_track_t *track);
 extern void useq_output_set_tracks(useq_output_t *output, int n_tracks, useq_track_t **tracks);
 extern void useq_output_destroy(useq_output_t *output);
 
@@ -97,6 +99,8 @@ extern void useq_output_destroy(useq_output_t *output);
 extern int useq_load_smf(useq_state_t *state, const char *filename);
 extern void useq_destroy_song(useq_state_t *state);
 extern void useq_state_set_outputs(useq_state_t *state, int n_outputs, useq_output_t **outputs);
+extern void useq_state_set_length(useq_state_t *state, uint32_t endpos);
+extern void useq_state_set_tempo_ppqn(useq_state_t *state, float tempo, uint32_t ppqn);
 
 // Playback management
 extern void useq_timer_restart(useq_state_t *state);

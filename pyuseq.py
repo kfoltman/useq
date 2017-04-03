@@ -47,6 +47,11 @@ def init():
 
     __fn('useq_load_smf', ctypes.c_int, [ctypes.c_void_p, EncodeAsAscii])
     __fn('useq_test', None, [ctypes.c_void_p])
+    __fn('useq_destroy_song', None, [ctypes.c_void_p])
+
+    __fn('useq_state_add_output', None, [ctypes.c_void_p, ctypes.c_void_p])
+    __fn('useq_state_set_tempo_ppqn', None, [ctypes.c_void_p, ctypes.c_float, ctypes.c_int])
+    __fn('useq_state_set_length', None, [ctypes.c_void_p, ctypes.c_int])
 
     __fn('useq_jack_create', ctypes.c_int, [ctypes.c_void_p, EncodeAsAscii])
     __fn('useq_jack_activate', None, [ctypes.c_void_p])
@@ -60,10 +65,11 @@ def init():
     __fn('useq_track_destroy', None, [ctypes.c_void_p])
 
     __fn('useq_output_new', ctypes.c_void_p, [ctypes.c_void_p, EncodeAsAscii])
+    __fn('useq_output_add_track', None, [ctypes.c_void_p, ctypes.c_void_p])
     __fn('useq_output_replace_track', None, [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p])
     __fn('useq_output_destroy', None, [ctypes.c_void_p])
 
-    dll = ctypes.CDLL("libjack.so")
+    dll = ctypes.CDLL("libjack.so.0")
     __fn("jack_connect", None, [ctypes.c_void_p, EncodeAsAscii, EncodeAsAscii])
 
 

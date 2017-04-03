@@ -142,6 +142,28 @@ static void cmd_update_outputs_exec(useq_state_t *state, void *arg) {
     state->outputs = u->outputs;
 }
 
+void useq_state_set_length(useq_state_t *state, uint32_t endpos)
+{
+    state->timer_end_ticks = endpos;
+}
+
+void useq_state_set_tempo_ppqn(useq_state_t *state, float tempo, uint32_t ppqn)
+{
+    state->master->ppqn = ppqn;
+    state->master->tempo = tempo;
+}
+
+bool useq_state_add_output(useq_state_t *state, useq_output_t *output)
+{
+    useq_output_t **outputs = calloc(sizeof(outputs[0]), state->n_outputs + 1);
+    if (!outputs)
+        return false;
+    memcpy(outputs, state->outputs, sizeof(outputs[0]) * state->n_outputs);
+    outputs[state->n_outputs] = output;
+    useq_state_set_outputs(state, state->n_outputs + 1, outputs);
+    return true;
+}
+
 void useq_state_set_outputs(useq_state_t *state, int n_outputs, useq_output_t **outputs)
 {
     int old_n_outputs = state->n_outputs;
@@ -169,6 +191,7 @@ void useq_state_set_outputs(useq_state_t *state, int n_outputs, useq_output_t **
             output->port = NULL;
         }
     }
+    free(old_outputs);
 }
 
 jack_client_t *useq_jack_get_client(useq_state_t *state)

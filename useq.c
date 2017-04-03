@@ -75,11 +75,9 @@ int useq_load_smf(useq_state_t *state, const char *filename)
     useq_output_t **outputs = calloc(sizeof(state->outputs[0]), n_outputs);
     outputs[0] = output;
     useq_state_set_outputs(state, n_outputs, outputs);
-    state->timer_end_ticks = endpos;
-    state->master->ppqn = song->ppqn;
-
+    useq_state_set_length(state, endpos);
     struct smf_tempo_struct *ts = smf_get_tempo_by_number(song, 0);
-    state->master->tempo = 60 * 1e6 /ts->microseconds_per_quarter_note;
+    useq_state_set_tempo_ppqn(state, 60 * 1e6 / ts->microseconds_per_quarter_note, song->ppqn);
 
     smf_delete(song);
 
